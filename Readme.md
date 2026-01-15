@@ -72,10 +72,53 @@ cmake --build build --config Release -j
 * System RAM Usage: 43GB
 * VRAM Usage: 3044MiB
 * GPU Idle Power: 5W
-* Temp: CPU peak: 38°C (IO), GPU: 28°C 
+* Temp: CPU peak: 38°C (IO), GPU: 28°C (Ambient Temp: 20°C)
 ## Performance
 ```bash
 prompt eval time =    6216.65 ms /  1039 tokens (    5.98 ms per token,   167.13 tokens per second)
        eval time =     473.01 ms /    13 tokens (   36.39 ms per token,    27.48 tokens per second)
       total time =    6689.66 ms /  1052 tokens
 ```
+
+# [Lvllm](https://github.com/guqiong96/Lvllm.git)
+This is extension of vllm that I found can offload MoE model layes to CPU and reduce GPU reliance.
+
+### Build Method
+You can follow the offical build instructions as shown in the project repo.
+```bash
+# Ensure you have the compatible cuda version. Tested nvcc==12.8.
+# Create a new python environment. Tested on python=3.12
+conda install -c conda-forge libstdcxx-ng
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+sudo apt-get install libnuma-dev
+
+# clone the project repo
+git clone https://github.com/guqiong96/Lvllm.git 
+cd Lvllm
+
+pip install torchaudio triton torchvision torch==2.9.1
+pip install xformers
+pip install -r requirements/build.txt
+
+# reduce MAX_JOBS if you have limited memory
+MAX_JOBS=32 NVCC_THREADS=1 CMAKE_BUILD_TYPE=Release CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release" pip install -e . --no-build-isolation -vvv
+```
+### Model to be served
+Same Qwen3-Next model in AWQ 4bit quantization, as vllm has generic support.<br>
+[cyankiwi/Qwen3-Next-80B-A3B-Instruct-AWQ-4bit](https://huggingface.co/cyankiwi/Qwen3-Next-80B-A3B-Instruct-AWQ-4bit$0) (model size:49.3GB)
+```bash
+LVLLM_MOE_NUMA_ENABLED=1 LK_THREADS="24" OMP_NUM_THREADS="24" vllm serve cyankiwi/Qwen3-Next-80B-A3B-Instruct-AWQ-4bit --config ~/Lvllm/config.yaml 
+```
+### Idle System Resources Usage
+* System RAM Usage: 44GB
+* VRAM Usage: 13476MiB
+* GPU Idle Power Consumption: 4W
+* Temp: CPU peak: 44°C (IO), GPU: 32°C (Ambient Temp: 20°C)
+## Performance
+```bash
+(APIServer pid=8223) INFO 01-15 14:47:13 [loggers.py:257] Engine 000: Avg prompt throughput: 162.2 tokens/s, Avg generation throughput: 18.2 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.8%, Prefix cache hit rate: 0.0%
+(APIServer pid=8223) INFO 01-15 14:47:23 [loggers.py:257] Engine 000: Avg prompt throughput: 0.0 tokens/s, Avg generation throughput: 27.0 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.8%, Prefix cache hit rate: 0.0%
+```
+Thermal Performance:
+* CPU: Peaked at 71°C
+* GPU: Peaked at 56°C
